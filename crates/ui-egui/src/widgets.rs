@@ -354,7 +354,11 @@ fn recessed_text(ui: &mut Ui, id: egui::Id, shown: &str, width: f32, rows: usize
     let shown_id = id.with("shown");
     let followed = ui.data_mut(|d| d.get_temp::<String>(shown_id)).is_none_or(|before| before == shown);
     ui.data_mut(|d| d.insert_temp(shown_id, shown.to_string()));
-    let typed = if editing && followed { ui.data_mut(|d| d.get_temp::<String>(id)) } else { None };
+    // Focus that moved on to another field (a click, Tab) is gone by the frame that reports it
+    // lost: the text typed must still be what that frame commits (#1796).
+    let had_id = id.with("had-focus");
+    let had = ui.data_mut(|d| d.get_temp::<bool>(had_id)).unwrap_or(false);
+    let typed = if (editing || had) && followed { ui.data_mut(|d| d.get_temp::<String>(id)) } else { None };
     let mut buf: String = typed.unwrap_or_else(|| shown.to_string());
     // The box is exactly as tall as the other controls of a row (26 points a line), its text
     // centred in it: a frame around the text came out a point taller and stood out next to
@@ -385,7 +389,11 @@ fn recessed_text(ui: &mut Ui, id: egui::Id, shown: &str, width: f32, rows: usize
             (rect, resp)
         })
         .inner;
-    ui.data_mut(|d| d.insert_temp(id, buf.clone()));
+    let focused = resp.has_focus();
+    ui.data_mut(|d| {
+        d.insert_temp(id, buf.clone());
+        d.insert_temp(had_id, focused);
+    });
     (buf, resp, rect)
 }
 

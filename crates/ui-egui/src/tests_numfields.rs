@@ -408,3 +408,37 @@ fn keyboard_focus_keeps_selecting_the_entire_numeric_field() {
         assert_eq!(f.selection(), Some((0, field_text(mode).chars().count())), "mode {mode}");
     }
 }
+
+/// #1796: a value typed into one field is committed when a click moves the focus on to another
+/// field, as Enter commits it; it doesn't go back to the old value.
+#[test]
+fn clicking_another_field_commits_what_was_typed() {
+    let ctx = egui::Context::default();
+    crate::theme::install_fonts(&ctx);
+    let mut time = 0.0;
+    let mut frame = |events: Vec<Event>| {
+        time += 0.05;
+        let screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(400.0, 200.0)));
+        let mut got = (None, None, Rect::NOTHING, Rect::NOTHING);
+        let mut out = ctx.run_ui(egui::RawInput { events, time: Some(time), screen_rect, focused: true, ..Default::default() }, |ui| {
+            got.0 = widgets::range_field(ui, "a", 10.0, 0.0..=1000.0, "", 0, 80.0);
+            got.2 = ui.min_rect();
+            got.1 = widgets::range_field(ui, "b", 20.0, 0.0..=1000.0, "", 0, 80.0);
+            got.3 = ui.min_rect();
+        });
+        out.textures_delta.clear();
+        got
+    };
+    let button = |pos, pressed| Event::PointerButton { pos, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+    let (_, _, a, both) = frame(vec![]);
+    let (at, bt) = (a.center(), Pos2::new(both.center().x, both.max.y - 10.0));
+    frame(vec![Event::PointerMoved(at), button(at, true)]);
+    frame(vec![button(at, false)]);
+    frame(vec![Event::Text("42".into())]);
+    // Into the second field, without Enter.
+    let mut committed = None;
+    for events in [vec![Event::PointerMoved(bt), button(bt, true)], vec![button(bt, false)], vec![]] {
+        committed = committed.or(frame(events).0);
+    }
+    assert_eq!(committed, Some(42.0));
+}
